@@ -1,7 +1,6 @@
-%%Chromatic Dispersion modelling
-
-
-
+%%/ Chromatic Dispersion modeling /%%
+%
+%
 % For a linear optical fiber we can model the effect of chromatic 
 % dispersion on the envelope A(z,t) of a pulse by the following 
 % partial differential equation:
@@ -28,41 +27,92 @@
 %Formats, Md. Saifuddin Faruk, Member, OSA and Seb J. Savory, Fellow, IEEE,
 %Fellow, OSA
 
-%% Constants %%
+%%/ Constants /%%
 
 no_of_symbols = 2048;
-symbol_rate = 100e9; %Hz
-sampling_rate =  2*symbol_rate; %Hz
-time_step = 1/sampling_rate; %s
-z = 50e3; %m
-D = 20*10^-6; %s/m/m % Fiber dispersion in ps/nm/km (For non-dispersion-shifted fiber near 1550 nm this is typically 17.)
-lambda = 1550*10^-9; %m
-c = 299792458; %m/s
+no_of_samples = 2 * no_of_symbols;
+symbol_rate = 100e9; % Baud rate
+sampling_rate =  2*symbol_rate; % Hz
+time_step = 1/sampling_rate; % s
+z = 5e3; % m
+D = 17*10^-6; % s/m/m % Fiber dispersion in ps/nm/km (For non-dispersion-shifted fiber near 1550 nm this is typically 17.)
+lambda = 1550*10^-9; % m
+c = 299792458; % m/s
 
-%% Time and Freq Vectors %%
+%%/ Time and Freq Vectors /%%
 
-time = linspace(0,no_of_symbols/symbol_rate,no_of_symbols);
-w = linspace(-symbol_rate/2,symbol_rate/2,no_of_symbols);
+symbols = pskmod(randi([0 3],1,no_of_symbols),4,pi/4,'gray');
+samples = kron(symbols,ones(1,no_of_samples/no_of_symbols));
 
-symbols = randi([0 3],1,no_of_symbols);
+time = linspace(0, no_of_samples/sampling_rate, no_of_samples);
+w = linspace(-sampling_rate/2, sampling_rate/2, no_of_samples);
 
-CD_symbols = chrom_disp(z,w,D,lambda,c);
+cd_samples = chrom(samples,z,D,lambda,sampling_rate);
 
-CD_symbols_2 = chrom(symbols,z,D,lambda);
+[cd_filt,trunc_cd_filt] = chrom_filt(lambda,z,D,time_step);
 
-function Chrom_Dispersed_Array = chrom_disp(distance,omega,dispersion_coeff,lambda,c)
+filtered_signal = conv2(cd_samples,cd_filt,'same');
 
-    Chrom_Dispersed_Array = exp(-(1j*distance*omega.^2*(dispersion_coeff*lambda^2/(4*pi*c))));
+figure
+plot(time*10^9,samples);
+hold on
+plot(time*10^9,CD_samples);
+hold off
+figure
+scatter(real(CD_samples),imag(CD_samples));
+figure
+plot(time*10^9,filtered_signal);
+xlabel('time (ns)');
+ylabel('signal amplitude');
+figure
+scatter(real(filtered_signal),imag(filtered_signal));
+%legend('samples','cd samples','filtered samples');
 
-end
-
-function Chromatically_Dispersed_Signal = chrom(signal,distance,dispersion_coeff,lambda)
+function chromatically_dispersed_signal = chrom(analog_signal,z,D,lambda,sampling_rate)
 
         c = 299792458;
-
-        spectrum = fftshift(fft(signal));
         
-        chrom_dispersed_spectrum = exp(-(1j*distance*spectrum.^2*(dispersion_coeff*lambda^2/(4*pi*c))));
+        w = linspace(-sampling_rate/2, sampling_rate/2, length(analog_signal))*2*pi;
         
-        Chromatically_Dispersed_Signal = ifftshift(ifft(chrom_dispersed_spectrum));
+        chrom_dispersion = exp(-1j*D*lambda^2*z.*(w.^2)/(4*pi*c));
+        
+        chrom_dispersion = ifftshift(chrom_dispersion); %Center around origin
+        
+        AS = fft(analog_signal); %Freq domain
+       
+        Chrom_Dispersed_Spectrum = chrom_dispersion.*AS; %Freq domain
+       
+        chromatically_dispersed_signal = ifft(Chrom_Dispersed_Spectrum); %Time domain
 end
+
+
+function [chromatic_dispersion_filter,trunc_filter] = chrom_filt(lambda,z,D,T)
+    
+    c = 299792458;
+
+    filter_taps = 2*floor((abs(D)*lambda^2*z/(2*c*T^2))) + 1; %upper_bound
+    
+    %%% Use this for optimisation later if needed
+    truncated_filter_taps = floor(0.6*filter_taps); %lower_bound
+    
+    if (mod(truncated_filter_taps,2) == 0)
+        truncated_filter_taps = truncated_filter_taps + 1;
+    end
+    %%%
+    
+    k = linspace(-floor(filter_taps/2),floor(filter_taps/2),filter_taps); %arranged array from -L to L where L is half the taps
+    
+    k_trunc = linspace(-floor(truncated_filter_taps/2),floor(truncated_filter_taps/2),truncated_filter_taps);
+    
+    %taps weight calculation
+    a_k_amplitude = sqrt((1j*c*T^2)/(D*lambda^2*z));  
+    a_k_exp = exp((-1j*pi*c*T^2).*(k.^2)/(D*lambda^2*z));
+    
+    a_trunc_exp = exp((-1j*pi*c*T^2).*(k_trunc.^2)/(D*lambda^2*z));
+    
+    [chromatic_dispersion_filter,trunc_filter] = deal(a_k_amplitude*a_k_exp, a_k_amplitude*a_trunc_exp);
+    
+end
+    
+    
+    
