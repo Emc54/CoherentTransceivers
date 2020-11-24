@@ -32,12 +32,18 @@
 no_of_symbols = 2048;
 no_of_samples = 2 * no_of_symbols;
 symbol_rate = 100e9; % Baud rate
-sampling_rate =  2*symbol_rate; % Hz
-time_step = 1/sampling_rate; % s
+sampling_rate =  2*symbol_rate; % Hz %Also Sampling Frequency
+T = 1/sampling_rate; % s Sampling Period
 z = 5e3; % m
 D = 17*10^-6; % s/m/m % Fiber dispersion in ps/nm/km (For non-dispersion-shifted fiber near 1550 nm this is typically 17.)
 lambda = 1550*10^-9; % m
 c = 299792458; % m/s
+
+
+K = (D*lambda^2*z)/(4*pi*c*T^2); 
+% constant defined in #Optimal Least-Squares FIR Digital Filters
+% for Compensation of Chromatic Dispersion
+% in Digital Coherent Optical Receivers#
 
 %%/ Time and Freq Vectors /%%
 
@@ -49,29 +55,61 @@ w = linspace(-sampling_rate/2, sampling_rate/2, no_of_samples);
 
 cd_samples = chrom(samples,z,D,lambda,sampling_rate);
 
-[cd_filt,trunc_cd_filt] = chrom_filt(lambda,z,D,time_step);
+[cd_filt,trunc_cd_filt] = chrom_filt(lambda,z,D,T);
 
 filtered_signal = conv2(cd_samples,cd_filt,'same');
 
 figure
-plot(time*10^9,samples);
+scatter(time*10^9,samples,'bx');
 hold on
-plot(time*10^9,CD_samples);
-hold off
-figure
-scatter(real(CD_samples),imag(CD_samples));
-figure
-plot(time*10^9,filtered_signal);
+scatter(time*10^9,cd_samples,'*');
 xlabel('time (ns)');
-ylabel('signal amplitude');
+ylabel('sample amplitude');
+legend('samples','chromatically distorted samples');
+hold off
+
+figure
+scatter(real(cd_samples),imag(cd_samples));
+title('Signal with added chromatic dispersion');
+xlabel('In-phase amplitude');
+ylabel('Quadrature amplitude');
+annotation('textbox',...
+    [0.254307593307592 0.889523809523816 0.574714285714286 0.0552380952381099],...
+    'String','sample rate: 200e9, z: 5e3, D: 17e-6, \lambda: 1550e-9',...
+    'LineStyle','none');
+
 figure
 scatter(real(filtered_signal),imag(filtered_signal));
-%legend('samples','cd samples','filtered samples');
+title('Signal after filtering chromatic dispersion');
+xlabel('In-phase amplitude');
+ylabel('Quadrature amplitude');
+text(-1,1.4,'sample rate: 200e9, z: 5e3, D: 17e-6, \lambda: 1550e-9'); 
+
+%%/ LS CD Compensation Filter /%%
+
+N_c = 1; %Has to be odd and less than N
+E_min = 100;
+Nc_best = 0;
+
+for i = 1:length(cd_filt)/2+1
+
+    least_squares_filter = LSfilt(samples,K,T,N_c)';
+
+    E = sum(abs(cd_filt(1,(length(cd_filt)-N_c)/2+1:(length(cd_filt)+N_c)/2)-least_squares_filter).^2)/2/pi;
+
+    if E < E_min
+        E_min = E;
+        Nc_best = N_c;
+    end
+    N_c = N_c + 2;
+end
+           
 
 function chromatically_dispersed_signal = chrom(analog_signal,z,D,lambda,sampling_rate)
 
         c = 299792458;
         
+        %sampling frequency F = 1/T
         w = linspace(-sampling_rate/2, sampling_rate/2, length(analog_signal))*2*pi;
         
         chrom_dispersion = exp(-1j*D*lambda^2*z.*(w.^2)/(4*pi*c));
@@ -114,5 +152,58 @@ function [chromatic_dispersion_filter,trunc_filter] = chrom_filt(lambda,z,D,T)
     
 end
     
+function h_hat = LSfilt(analog_signal,K,T,N_c)
+
+%        N = 2*floor(2*K*pi) + 1; %No of Filter Taps
+         
+         n = linspace(-floor(N_c/2),floor(N_c/2),N_c);
+         
+         wT = linspace(-(1/T)/2, (1/T)/2, length(analog_signal))*2*pi;
+         
+%         h = sqrt(1j/(4*K*pi))*exp((-1j.*(n.^2))/(4*K));
+%            
+%          H = ones(1,length(n));
+%          
+%          for k = 1:length(n)
+%             for i = 1:N_c
+%                 H(k) = H(k) + h(i+(N-N_c)/2)*exp(-1j*n(i)*wT(k)); 
+%                 % This line gets values in h from N-N_c/2 to N+N_c/2 using i  
+%                 % It iterates through all of wT and n using k
+%             end
+%          end
+         
+         D = nan(1,length(n));
+         
+         for i = 1:length(n)
+             D(i) = exp(-1j*((n(i)^2)/(4*K)+3*pi/4))/(4*sqrt(pi*K))...
+                 *(...
+                 erfi(exp(3j*pi/4)*(2*K*pi-n(i)/(2*sqrt(K))))...
+                 +erfi(exp(3j*pi/4)*(2*K*pi+n(i)/(2*sqrt(K))))...
+                 );
+         end
+         
+         Q = eye(N_c);
+%          
+%          for i=1:N_c
+%              if i == (N_c-1)/2
+%                  Q(1,i) = (wT(1,end) - wT(1))/(2*pi);
+%              else
+%                  Q(1,i) = (exp(-1j*i*wT(1)) - exp(-1j*i*wT(end)))/(2*1j*pi*i);
+%              end
+%          end
+%          
+         for i=1:N_c
+             if i == (N_c-1)/2
+                 Q(1,i) = 1;
+             else
+                 Q(1,i) = (exp(-1j*i*(-pi)) - exp(-1j*i*pi))/(2*1j*pi*i);
+             end
+         end
+         
+         h_hat = Q\D';
+         
+end
     
     
+
+
