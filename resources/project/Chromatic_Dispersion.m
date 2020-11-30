@@ -27,183 +27,219 @@
 %Formats, Md. Saifuddin Faruk, Member, OSA and Seb J. Savory, Fellow, IEEE,
 %Fellow, OSA
 
-%%/ Constants /%%
+%% Constants %%
 
 no_of_symbols = 2048;
-no_of_samples = 2 * no_of_symbols;
-symbol_rate = 100e9; % Baud rate
-sampling_rate =  2*symbol_rate; % Hz %Also Sampling Frequency
-T = 1/sampling_rate; % s Sampling Period
-z = 5e3; % m
+no_of_samples = 8 * no_of_symbols;
+symbol_rate = 10e9; % Baud rate
+fs = 8*symbol_rate; % Hz %Sampling Rate / Sampling Frequency
+T = 1/fs; % s Sampling Period
+z = 5000e3; % m
 D = 17*10^-6; % s/m/m % Fiber dispersion in ps/nm/km (For non-dispersion-shifted fiber near 1550 nm this is typically 17.)
 lambda = 1550*10^-9; % m
 c = 299792458; % m/s
-
-
 K = (D*lambda^2*z)/(4*pi*c*T^2); 
 % constant defined in #Optimal Least-Squares FIR Digital Filters
 % for Compensation of Chromatic Dispersion
 % in Digital Coherent Optical Receivers#
+N_c = 32;
 
-%%/ Time and Freq Vectors /%%
+%% Signal Vectors %%
 
 symbols = pskmod(randi([0 3],1,no_of_symbols),4,pi/4,'gray');
-samples = kron(symbols,ones(1,no_of_samples/no_of_symbols));
 
-time = linspace(0, no_of_samples/sampling_rate, no_of_samples);
-w = linspace(-sampling_rate/2, sampling_rate/2, no_of_samples);
+%samples = kron(symbols,ones(1,no_of_samples/no_of_symbols));
 
-cd_samples = chrom(samples,z,D,lambda,sampling_rate);
+time = linspace(0, no_of_samples/fs, no_of_samples);
+ 
+%Testing for pulse shaping
+tx_ps_filter = comm.RaisedCosineTransmitFilter("FilterSpanInSymbols",10,"OutputSamplesPerSymbol",8,"RolloffFactor",0.5,"Shape","Square root","Gain",1);
+rx_ps_filter = comm.RaisedCosineReceiveFilter("FilterSpanInSymbols",10,"InputSamplesPerSymbol",8,"RolloffFactor",0.5,"Shape","Square root","Gain",1);
 
-[cd_filt,trunc_cd_filt] = chrom_filt(lambda,z,D,T);
+rc_samples =  tx_ps_filter(symbols);
+rc_samples = reshape(rc_samples,1,[]);
 
-filtered_signal = conv2(cd_samples,cd_filt,'same');
+%FFT frequency array should start at 0 go slightly below N/2 ((N-1)/2) then wrap to -N/2 and go to
+%zero again
+f_up = (1:(no_of_samples)/2);
+f_down = (-(no_of_samples-1)/2:0);
+f = [f_up f_down]*fs/no_of_samples;
+w = 2*pi*f;
+       
+%% Modelling Chromatic Dispersion %%
+
+chrom_dispersion_model = exp(-1j*K.*(w.^2));
+        
+chrom_dispersion_model = ifftshift(chrom_dispersion_model); %Center around origin
+        
+analog_signal_spectrum = fft(rc_samples); %Freq domain
+        
+chrom_dispersed_Spectrum = chrom_dispersion_model.*analog_signal_spectrum; %Freq domain
+       
+chromatically_dispersed_signal = ifft(chrom_dispersed_Spectrum); %Time domain
+
+
+%% Modelling the Simple Chromatic Dispersion Filter %%
+
+N = 2*floor((abs(D)*lambda^2*z/(2*c*T^2))) + 1; % Number of Filter Taps (upper bound) 
+     
+k = linspace(-floor(N/2),floor(N/2),N); %arranged array from -L to L where L is N/2
+    
+%taps weight calculation
+a_k_amplitude = sqrt((1j*c*T^2)/(D*lambda^2*z));  
+a_k_exp = exp((-1j*pi*c*T^2).*(k.^2)/(D*lambda^2*z));
+   
+chromatic_dispersion_filter = a_k_amplitude*a_k_exp;   %% This is h(n)
+
+%fvtool(chromatic_dispersion_filter);
+
+%% Modelling the Least Squares Filter %%
+
+% Assumes full bandwidth from -pi to pi, can be reduced
+
+n = linspace(-floor(N/2),floor(N/2),N);
+         
+D = exp(-1j*((n.^2)/(4*K)+3*pi/4))/(4*sqrt(pi*K)).*(...
+       erfi(exp(3j*pi/4)*(2*K*pi-n/(2*sqrt(K))))...
+       +erfi(exp(3j*pi/4)*(2*K*pi+n/(2*sqrt(K))))...
+       );
+        
+%% Modelling the Adaptive NLMS Filter %%
+
+lms = dsp.LMSFilter('Length',N_c,'StepSize',0.08,'Method','Normalized LMS');
+
+
+%% Filtering the Signals %%
+
+cd_filtered_signal = fftfilt(chromatic_dispersion_filter,chromatically_dispersed_signal);
+
+ls_filtered_signal = fftfilt(D,chromatically_dispersed_signal);
+
+[lms_filtered_signal,lms_error,lms_weights] = lms(chromatically_dispersed_signal',rc_samples');
+
+%% Figures %%
+figure
+scatter(real(symbols),imag(symbols),'x');
+hold on
+scatter(real(rc_samples),imag(rc_samples),'+');
+grid on
+title('Signal');
+xlabel('In-phase amplitude');
+ylabel('Quadrature amplitude');
 
 figure
-scatter(time*10^9,samples,'bx');
+scatter(real(rc_samples),imag(rc_samples),'+');
+grid on
+title('Signal');
+xlabel('In-phase amplitude');
+ylabel('Quadrature amplitude');
+
+
+figure
+scatter(time*10^9,rc_samples,'bx');
 hold on
-scatter(time*10^9,cd_samples,'*');
+scatter(time*10^9,chromatically_dispersed_signal,'*');
 xlabel('time (ns)');
 ylabel('sample amplitude');
 legend('samples','chromatically distorted samples');
 hold off
 
 figure
-scatter(real(cd_samples),imag(cd_samples));
+scatter(real(chromatically_dispersed_signal),imag(chromatically_dispersed_signal));
 title('Signal with added chromatic dispersion');
 xlabel('In-phase amplitude');
 ylabel('Quadrature amplitude');
 annotation('textbox',...
     [0.254307593307592 0.889523809523816 0.574714285714286 0.0552380952381099],...
-    'String','sample rate: 200e9, z: 5e3, D: 17e-6, \lambda: 1550e-9',...
+    'String','sample rate: 200e9, z: 5000e3, D: 17e-6, \lambda: 1550e-9',...
     'LineStyle','none');
 
 figure
-scatter(real(filtered_signal),imag(filtered_signal));
-title('Signal after filtering chromatic dispersion');
+scatter(real(cd_filtered_signal),imag(cd_filtered_signal));
+title('Signal after simple filtering of chromatic dispersion');
 xlabel('In-phase amplitude');
 ylabel('Quadrature amplitude');
-text(-1,1.4,'sample rate: 200e9, z: 5e3, D: 17e-6, \lambda: 1550e-9'); 
-
-%%/ LS CD Compensation Filter /%%
-
-N_c = 1; %Has to be odd and less than N
-E_min = 100;
-Nc_best = 0;
-
-for i = 1:length(cd_filt)/2+1
-
-    least_squares_filter = LSfilt(samples,K,T,N_c)';
-
-    E = sum(abs(cd_filt(1,(length(cd_filt)-N_c)/2+1:(length(cd_filt)+N_c)/2)-least_squares_filter).^2)/2/pi;
-
-    if E < E_min
-        E_min = E;
-        Nc_best = N_c;
-    end
-    N_c = N_c + 2;
-end
-           
-
-function chromatically_dispersed_signal = chrom(analog_signal,z,D,lambda,sampling_rate)
-
-        c = 299792458;
-        
-        %sampling frequency F = 1/T
-        w = linspace(-sampling_rate/2, sampling_rate/2, length(analog_signal))*2*pi;
-        
-        chrom_dispersion = exp(-1j*D*lambda^2*z.*(w.^2)/(4*pi*c));
-        
-        chrom_dispersion = ifftshift(chrom_dispersion); %Center around origin
-        
-        AS = fft(analog_signal); %Freq domain
-       
-        Chrom_Dispersed_Spectrum = chrom_dispersion.*AS; %Freq domain
-       
-        chromatically_dispersed_signal = ifft(Chrom_Dispersed_Spectrum); %Time domain
-end
+%text(-1,1.4,'sample rate: 200e9, z: 5e3, D: 17e-6, \lambda: 1550e-9'); 
 
 
-function [chromatic_dispersion_filter,trunc_filter] = chrom_filt(lambda,z,D,T)
+figure
+scatter(real(ls_filtered_signal),imag(ls_filtered_signal));
+title('Signal after filtering with LS filter');
+xlabel('In-phase amplitude');
+ylabel('Quadrature amplitude');
+
+figure
+scatter(real(lms_filtered_signal),imag(lms_filtered_signal));
+title('Signal after filtering with adaptive NLMS');
+xlabel('In-phase amplitude');
+ylabel('Quadrature amplitude');
+
+%% Demodulation %%
+x = reshape(cd_filtered_signal,8,[]);
+matched_symbols1  = rx_ps_filter(reshape(cd_filtered_signal,no_of_samples/no_of_symbols,[]));
+matched_symbols2 = rx_ps_filter(reshape(ls_filtered_signal,no_of_samples/no_of_symbols,[]));
+matched_symbols3 = rx_ps_filter(reshape(lms_filtered_signal,no_of_samples/no_of_symbols,[]));
+
+recovered1 = pskdemod(matched_symbols1,4,pi/4,'gray');
+recovered2 = pskdemod(matched_samples2,4,pi/4,'gray');
+recovered3 = pskdemod(matched_samples3,4,pi/4,'gray');
+
+
+%% Deprecated %%
+% function chromatically_dispersed_signal = chrom(analog_signal,K,sampling_rate)
+% 
+% 
+%         %TO FIX
+%         w = linspace(-(sampling_rate)/2, (sampling_rate)/2, length(analog_signal))*2*pi;
+%         
+%         %c = 299792458;
+%         %wT = w*(1/fs);
+%         
+%         %K = (D*lambda^2*z)/(4*pi*c*(1/fs)^2); 
+%         chrom_dispersion = exp(-1j*K.*(w.^2));
+%         
+%         %analog_signal = [analog_signal ,0];
+%         chrom_dispersion = ifftshift(chrom_dispersion); %Center around origin
+%         
+%         AS = fft(analog_signal); %Freq domain
+%         
+%         Chrom_Dispersed_Spectrum = chrom_dispersion.*AS; %Freq domain
+%        
+%         chromatically_dispersed_signal = ifft(Chrom_Dispersed_Spectrum); %Time domain
+% end
+
+
+% function chromatic_dispersion_filter = chrom_filt(lambda,z,D,T)
+%     
+%     c = 299792458;
+% 
+%     filter_taps = 2*floor((abs(D)*lambda^2*z/(2*c*T^2))) + 1; %upper_bound
+%      
+%     k = linspace(-floor(filter_taps/2),floor(filter_taps/2),filter_taps); %arranged array from -L to L where L is half the taps
+%     
+%     %taps weight calculation
+%     a_k_amplitude = sqrt((1j*c*T^2)/(D*lambda^2*z));  
+%     a_k_exp = exp((-1j*pi*c*T^2).*(k.^2)/(D*lambda^2*z));
+%    
+%     chromatic_dispersion_filter = a_k_amplitude*a_k_exp;
+%     
+% end
     
-    c = 299792458;
-
-    filter_taps = 2*floor((abs(D)*lambda^2*z/(2*c*T^2))) + 1; %upper_bound
-    
-    %%% Use this for optimisation later if needed
-    truncated_filter_taps = floor(0.6*filter_taps); %lower_bound
-    
-    if (mod(truncated_filter_taps,2) == 0)
-        truncated_filter_taps = truncated_filter_taps + 1;
-    end
-    %%%
-    
-    k = linspace(-floor(filter_taps/2),floor(filter_taps/2),filter_taps); %arranged array from -L to L where L is half the taps
-    
-    k_trunc = linspace(-floor(truncated_filter_taps/2),floor(truncated_filter_taps/2),truncated_filter_taps);
-    
-    %taps weight calculation
-    a_k_amplitude = sqrt((1j*c*T^2)/(D*lambda^2*z));  
-    a_k_exp = exp((-1j*pi*c*T^2).*(k.^2)/(D*lambda^2*z));
-    
-    a_trunc_exp = exp((-1j*pi*c*T^2).*(k_trunc.^2)/(D*lambda^2*z));
-    
-    [chromatic_dispersion_filter,trunc_filter] = deal(a_k_amplitude*a_k_exp, a_k_amplitude*a_trunc_exp);
-    
-end
-    
-function h_hat = LSfilt(analog_signal,K,T,N_c)
-
-%        N = 2*floor(2*K*pi) + 1; %No of Filter Taps
-         
-         n = linspace(-floor(N_c/2),floor(N_c/2),N_c);
-         
-         wT = linspace(-(1/T)/2, (1/T)/2, length(analog_signal))*2*pi;
-         
-%         h = sqrt(1j/(4*K*pi))*exp((-1j.*(n.^2))/(4*K));
-%            
-%          H = ones(1,length(n));
+% function h_hat = LSfilt(K,N_c)
+% 
+%          N = 2*floor(2*K*pi) + 1; %No of Filter Taps
 %          
-%          for k = 1:length(n)
-%             for i = 1:N_c
-%                 H(k) = H(k) + h(i+(N-N_c)/2)*exp(-1j*n(i)*wT(k)); 
-%                 % This line gets values in h from N-N_c/2 to N+N_c/2 using i  
-%                 % It iterates through all of wT and n using k
-%             end
-%          end
-         
-         D = nan(1,length(n));
-         
-         for i = 1:length(n)
-             D(i) = exp(-1j*((n(i)^2)/(4*K)+3*pi/4))/(4*sqrt(pi*K))...
-                 *(...
-                 erfi(exp(3j*pi/4)*(2*K*pi-n(i)/(2*sqrt(K))))...
-                 +erfi(exp(3j*pi/4)*(2*K*pi+n(i)/(2*sqrt(K))))...
-                 );
-         end
-         
-         Q = eye(N_c);
-%          
-%          for i=1:N_c
-%              if i == (N_c-1)/2
-%                  Q(1,i) = (wT(1,end) - wT(1))/(2*pi);
-%              else
-%                  Q(1,i) = (exp(-1j*i*wT(1)) - exp(-1j*i*wT(end)))/(2*1j*pi*i);
-%              end
+%          if N_c < N
+%              N = N_c;
 %          end
 %          
-         for i=1:N_c
-             if i == (N_c-1)/2
-                 Q(1,i) = 1;
-             else
-                 Q(1,i) = (exp(-1j*i*(-pi)) - exp(-1j*i*pi))/(2*1j*pi*i);
-             end
-         end
-         
-         h_hat = Q\D';
-         
-end
-    
-    
-
-
+%          n = linspace(-floor(N/2),floor(N/2),N);
+%          
+%          D = exp(-1j*((n.^2)/(4*K)+3*pi/4))/(4*sqrt(pi*K)).*(...
+%                 erfi(exp(3j*pi/4)*(2*K*pi-n/(2*sqrt(K))))...
+%                 +erfi(exp(3j*pi/4)*(2*K*pi+n/(2*sqrt(K))))...
+%                 );
+%          
+%          h_hat = D';
+%          
+% end
