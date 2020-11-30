@@ -78,6 +78,19 @@ chrom_dispersed_Spectrum = chrom_dispersion_model.*analog_signal_spectrum; %Freq
        
 chromatically_dispersed_signal = ifft(chrom_dispersed_Spectrum); %Time domain
 
+%%%ALTERNATE%%%
+g_amp = sqrt(c/(1j*D*lambda^2*z));
+g_phase = exp(1j*pi*c.*(time(1:N_c).^2)/(D*lambda^2*z));
+g_impulse = g_amp*g_phase;
+
+chrom_signal = conv(g_impulse,rc_samples,"same");
+
+% figure
+% scatter(real(chrom_signal),imag(chrom_signal),'x');
+% grid on
+% title('time domain attempt at chromatic dispersion');
+% xlabel('In-phase amplitude');
+% ylabel('Quadrature amplitude');
 
 %% Modelling the Simple Chromatic Dispersion Filter %%
 
@@ -99,7 +112,7 @@ chromatic_dispersion_filter = a_k_amplitude*a_k_exp;   %% This is h(n)
 
 n = linspace(-floor(N/2),floor(N/2),N);
          
-D = exp(-1j*((n.^2)/(4*K)+3*pi/4))/(4*sqrt(pi*K)).*(...
+D_hat = exp(-1j*((n.^2)/(4*K)+3*pi/4))/(4*sqrt(pi*K)).*(...
        erfi(exp(3j*pi/4)*(2*K*pi-n/(2*sqrt(K))))...
        +erfi(exp(3j*pi/4)*(2*K*pi+n/(2*sqrt(K))))...
        );
@@ -113,7 +126,7 @@ lms = dsp.LMSFilter('Length',N_c,'StepSize',0.08,'Method','Normalized LMS');
 
 cd_filtered_signal = fftfilt(chromatic_dispersion_filter,chromatically_dispersed_signal);
 
-ls_filtered_signal = fftfilt(D,chromatically_dispersed_signal);
+ls_filtered_signal = fftfilt(D_hat,chromatically_dispersed_signal);
 
 [lms_filtered_signal,lms_error,lms_weights] = lms(chromatically_dispersed_signal',rc_samples');
 
@@ -175,15 +188,19 @@ xlabel('In-phase amplitude');
 ylabel('Quadrature amplitude');
 
 %% Demodulation %%
-x = reshape(cd_filtered_signal,8,[]);
+
 matched_symbols1  = rx_ps_filter(reshape(cd_filtered_signal,no_of_samples/no_of_symbols,[]));
 matched_symbols2 = rx_ps_filter(reshape(ls_filtered_signal,no_of_samples/no_of_symbols,[]));
 matched_symbols3 = rx_ps_filter(reshape(lms_filtered_signal,no_of_samples/no_of_symbols,[]));
 
 recovered1 = pskdemod(matched_symbols1,4,pi/4,'gray');
-recovered2 = pskdemod(matched_samples2,4,pi/4,'gray');
-recovered3 = pskdemod(matched_samples3,4,pi/4,'gray');
+recovered2 = pskdemod(matched_symbols2,4,pi/4,'gray');
+recovered3 = pskdemod(matched_symbols3,4,pi/4,'gray');
+rec_symbols = pskdemod(symbols,4,pi/4,'gray');
 
+[~,BER1] = biterr(rec_symbols,recovered1,2);
+[~,BER2] = biterr(rec_symbols,recovered2,2);
+[~,BER3] = biterr(rec_symbols,recovered3,2);
 
 %% Deprecated %%
 % function chromatically_dispersed_signal = chrom(analog_signal,K,sampling_rate)
