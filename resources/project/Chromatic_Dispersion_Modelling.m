@@ -219,20 +219,30 @@ recovered3 = pskdemod(matched_symbols3,4,pi/4,'gray');
 
 rec_symbols = pskdemod(symbols,4,pi/4,'gray');
 rec_symbols2 = rec_symbols;
-
+rec_symbols3 = rec_symbols;
 %Shift by number of Taps, when taps known, also use autocorellation to get
 %estimate when taps unknown or the channel has further shifted the signal
-recovered0 = recovered0(1+Taps:end);
+autocorr = real(ifft(conj(fft(rec_symbols)).*(fft(recovered1)))); %manual estimation
+
+[correlation,lags] = xcorr(rec_symbols,recovered0); %Matlab defined function
+[max_corr,idx_corr] = max(correlation);
+lag = lags(idx_corr);
+
+%plot(real(ifft(conj(fft(rec_symbols)).*(fft(recovered1)))));
+plot(lags,correlation);
+
+recovered0 = recovered0(1-lag:end);
 recovered1 = recovered1((1+Taps):end);
 recovered2 = recovered2((1+Taps):end);
-rec_symbols = rec_symbols(1:end-Taps);
+rec_symbols = rec_symbols(1:end+lag);
+rec_symbols3 = rec_symbols3(1:end-Taps);
 
 [~,BER0] = biterr(rec_symbols,recovered0,2);
-[~,BER1] = biterr(rec_symbols,recovered1,2);
+[~,BER1] = biterr(rec_symbols3,recovered1,2);
 
-plot(rec_symbols,recovered1);
+plot(rec_symbols3,recovered1);
 
-[~,BER2] = biterr(rec_symbols,recovered2,2);
+[~,BER2] = biterr(rec_symbols3,recovered2,2);
 [~,BER3] = biterr(rec_symbols2,recovered3,2);
 
 %% Deprecated %%
