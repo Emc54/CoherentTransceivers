@@ -78,7 +78,7 @@ w = 2*pi*f;
 %% Modelling Chromatic Dispersion %%
 
 chrom_dispersion_model = exp(-1j*K.*(w.^2)*T^2);
-%fvtool(chrom_dispersion_model);
+fvtool(chrom_dispersion_model);
 %chrom_dispersion_model = ifftshift(chrom_dispersion_model); %Center around origin
         
 analog_signal_spectrum = fftshift(fft(rc_samples)); %Freq domain and shift to -freq to 0 to +freq
@@ -113,7 +113,7 @@ hn_amplitude = sqrt(1j/(4*K*pi));
 hn_exp = exp(-1j.*(n.^2)/(4*K));
 chromatic_dispersion_filter = hn_amplitude*hn_exp;   %% This is h(n)
 
-%fvtool(chromatic_dispersion_filter);
+fvtool(chromatic_dispersion_filter);
 
 %% Modelling the Least Squares Filter %%
 N_c = N;
