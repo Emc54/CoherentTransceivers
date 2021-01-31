@@ -1,4 +1,4 @@
-function chromatically_dispersed_signal = Chromatic_Dispersion(signal,sample_rate,D,z,l)
+function chromatically_dispersed_signal = Inv_of_Chromatic_Dispersion(signal,sample_rate,D,z,l)
 %CHROMATIC_DISPERSION A function that models chromatic dispersion and
 %applies it to a provided input signal
 
@@ -9,7 +9,6 @@ T = 1/sample_rate; % s Sampling Period
 lambda = l; %1550*10^-9; % m
 c = 299792458; % m/s
 K = (D*lambda^2*z)/(4*pi*c*T^2); 
-
 % constant defined in #Optimal Least-Squares FIR Digital Filters
 % for Compensation of Chromatic Dispersion
 % in Digital Coherent Optical Receivers#
@@ -32,7 +31,7 @@ w = 2*pi*fs;
 % fs = (-sample_rate/2:df:sample_rate/2);
 % w = 2*pi*fs(1:end-1);
 
-chrom_dispersion_model = exp(-1j*K.*(w.^2)*T^2);
+chrom_dispersion_model = exp(1j*K.*(w.^2)*T^2);
 %chrom_dispersion_model = ifftshift(chrom_dispersion_model); %Center around origin
                        
 chromatically_dispersed_signal = ifftshift(ifft(chrom_dispersion_model.*fft(fftshift(signal)))); 
