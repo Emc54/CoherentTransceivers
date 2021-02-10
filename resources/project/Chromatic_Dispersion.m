@@ -23,10 +23,12 @@ K = (D*lambda^2*z)/(4*pi*c*T^2);
 %%% Apply Reverse CD Model in case filter doesn't work as a proof of
 %%% concept!!
 % 
-f_up = (1:(no_of_samples)/2);
-f_down = (-(no_of_samples)/2+1:0);
-fs = [f_down f_up]*sample_rate/no_of_samples;
+f_up = (0:(no_of_samples)/2-1);
+f_down = (-(no_of_samples)/2:-1);
+fs = [f_up f_down]*sample_rate/no_of_samples;
 w = 2*pi*fs;
+
+%Define omega from 0 to pi/T then -pi/T
 
 % df = sample_rate/no_of_samples;
 % fs = (-sample_rate/2:df:sample_rate/2);
@@ -35,6 +37,6 @@ w = 2*pi*fs;
 chrom_dispersion_model = exp(-1j*K.*(w.^2)*T^2);
 %chrom_dispersion_model = ifftshift(chrom_dispersion_model); %Center around origin
                        
-chromatically_dispersed_signal = ifftshift(ifft(chrom_dispersion_model.*fft(fftshift(signal)))); 
+chromatically_dispersed_signal = ifft(chrom_dispersion_model.*fft(signal)); 
 end
 
