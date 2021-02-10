@@ -133,7 +133,7 @@ D_n = D_n1.*(D_n2+D_n3);
 
 lms = dsp.LMSFilter('Length',32,'StepSize',0.08,'Method','Normalized LMS');
 
-
+eqlin = comm.LinearEqualizer('Algorithm','RLS','NumTaps',10,'ForgettingFactor',0.3);
 %% Filtering the Signals %%
 
 cd_filtered_signal = fftfilt(chromatic_dispersion_filter,chromatically_dispersed_signal);
