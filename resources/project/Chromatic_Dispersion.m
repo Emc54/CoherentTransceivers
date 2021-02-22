@@ -36,7 +36,8 @@ w = 2*pi*fs;
 
 chrom_dispersion_model = exp(-1j*K.*(w.^2)*T^2);
 %chrom_dispersion_model = ifftshift(chrom_dispersion_model); %Center around origin
-                       
+
+%%%%Does this do cyclic operations instead of linear operations??                       
 chromatically_dispersed_signal = ifft(chrom_dispersion_model.*fft(signal)); 
 end
 
