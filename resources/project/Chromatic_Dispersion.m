@@ -3,7 +3,7 @@ function CD_signal = Chromatic_Dispersion(signal,sample_rate,D,z,l)
 %applies it to a provided input signal
 
 no_of_samples = length(signal);
-T = 1/sample_rate; % s Sampling Period
+%T = 1/sample_rate; % s Sampling Period
 lambda = l; %1550*10^-9; % m
 c = 299792458; % m/s
 %z = 5000e3; % m
