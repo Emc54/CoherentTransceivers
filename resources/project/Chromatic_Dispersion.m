@@ -1,11 +1,11 @@
-function CD_signal = Chromatic_Dispersion(signal,sample_rate,D,z,l)
+function CD_signal = Chromatic_Dispersion(signal,num_symbols,symbol_rate,D,z,l)
 %CHROMATIC_DISPERSION A function that models chromatic dispersion and
 %applies it to a provided input signal
 
 no_of_samples = length(signal);
 %T = 1/sample_rate; % s Sampling Period
 lambda = l; %1550*10^-9; % m
-c = 299792458; % m/s
+c = 3e8; % m/s
 %z = 5000e3; % m
 %D = 16*10^-6; % s/m/m % Fiber dispersion in ps/nm/km (For non-dispersion-shifted fiber near 1550 nm this is typically 17.)
 
@@ -15,7 +15,7 @@ c = 299792458; % m/s
 
 f_up = (0:(no_of_samples)/2-1);
 f_down = (-(no_of_samples)/2:-1);
-fs = [f_up f_down]*sample_rate/no_of_samples;
+fs = [f_up f_down]*symbol_rate/num_symbols;
 w = 2*pi*fs;
 
 
