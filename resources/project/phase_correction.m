@@ -3,6 +3,9 @@ function phase_corrected_signal = phase_correction(input_signal,chunk_length)
 %   Detailed explanation goes here
 
 
+if size(input_signal,2) > size(input_signal,1)
+    input_signal = input_signal.';
+end
 
 %Attempt to find the mean angle in chunks
 raised_phase_signal = input_signal.^4;
@@ -11,9 +14,6 @@ chunk_size = [chunk_length,1];
 
 raised_phase_signal = filtfilt(ones(100,1)/100,1,raised_phase_signal);
 
-if size(raised_phase_signal,2) > size(raised_phase_signal,1)
-    raised_phase_signal = raised_phase_signal.';
-end
 
 mean_filter_fun = @(theBlockStructure) mean2(theBlockStructure.data(:));
 averages = blockproc(raised_phase_signal,chunk_size,mean_filter_fun);
@@ -27,7 +27,8 @@ leftover = padarray(leftover,[chunk_length-length(leftover) 0],0,'post');
 combined = [reshaped leftover];
 
 for iter=1:size(reshaped,2)
-    combined(:,iter) = combined(:,iter).*exp(1j*pi/4-1j*phase_estimates(iter)+3j*pi/2);
+    %%% Check all four orientations
+    combined(:,iter) = combined(:,iter).*exp(1j*pi/4-1j*phase_estimates(iter)+1j*3*pi/2);
 end
 
 phase_compensated = reshape(combined,[],1).';
