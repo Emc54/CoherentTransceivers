@@ -28,7 +28,7 @@ combined = [reshaped leftover];
 
 for iter=1:size(reshaped,2)
     %%% Check all four orientations
-    combined(:,iter) = combined(:,iter).*exp(1j*pi/4-1j*phase_estimates(iter)+1j*3*pi/2);
+    combined(:,iter) = combined(:,iter).*exp(1j*pi/4-1j*phase_estimates(iter)+3j*pi/2);
 end
 
 phase_compensated = reshape(combined,[],1).';
